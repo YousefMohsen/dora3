@@ -42,3 +42,6 @@ next-env.d.ts
 
 # inspiration
 inspiration/
+
+# local document storage
+data/documents/

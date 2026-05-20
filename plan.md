@@ -48,6 +48,10 @@ There should be a button in the conversation panel over settins saying documents
 
 -next to each document it should show a status if its indexed or not. for now just dummy, we will connect to db later. 
 
-## Phase 4:
+
+## phase 4
+Processing the documents. There should be a setup where i can process the documents so its easier for the agents to understand. Like postgress db. it shuold be easy to start it locally. like docker-compose-db.yml to start a postress that the processing job can talk to.
+
+## Phase 5:
 The actual agent. I want to see how claude code was implemented. what tools, loops etc was used and try to do something similar. This phase i will describe later when phase 1 is done. 
 
