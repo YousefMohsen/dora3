@@ -1,0 +1,15 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: dora3-postgres
+    environment:
+      POSTGRES_USER: dora
+      POSTGRES_PASSWORD: dora
+      POSTGRES_DB: dora3
+    ports:
+      - "5432:5432"
+    volumes:
+      - dora3-postgres-data:/var/lib/postgresql/data
+
+volumes:
+  dora3-postgres-data:

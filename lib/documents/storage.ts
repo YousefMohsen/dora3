@@ -38,9 +38,11 @@ export async function saveUploadedPdf(
 export async function deleteStoredDocument(
   document: DocumentRecord,
 ): Promise<void> {
-  await rm(path.join(UPLOADS_DIR, document.datasetId, document.storedName), {
-    force: true,
-  });
+  await rm(getStoredDocumentPath(document), { force: true });
+}
+
+export function getStoredDocumentPath(document: DocumentRecord) {
+  return path.join(UPLOADS_DIR, document.datasetId, document.storedName);
 }
 
 function sanitizeFileName(fileName: string) {

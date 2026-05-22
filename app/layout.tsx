@@ -15,6 +15,9 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Dora3",
   description: "Local document-chat app prototype",
+  icons: {
+    icon: "/favicon.ico",
+  },
 };
 
 export default function RootLayout({

@@ -1,10 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { DocumentTable } from "@/components/documents/DocumentTable";
 import { DocumentUpload } from "@/components/documents/DocumentUpload";
+import {
+  IndexSummaryPanel,
+  type DatasetIndexSummary,
+} from "@/components/documents/IndexSummaryPanel";
 import type { Dataset, DocumentRecord } from "@/lib/documents/types";
 
 type DatasetDetailProps = {
@@ -27,37 +31,67 @@ export function DatasetDetail({ datasetId }: DatasetDetailProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isIndexing, setIsIndexing] = useState(false);
+  const [isIndexSummaryLoading, setIsIndexSummaryLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [noticeMessage, setNoticeMessage] = useState<string | null>(null);
+  const [indexSummary, setIndexSummary] =
+    useState<DatasetIndexSummary | null>(null);
+  const [indexSummaryError, setIndexSummaryError] = useState<string | null>(
+    null,
+  );
   const [notFound, setNotFound] = useState(false);
+
+  const refreshIndexSummary = useCallback(
+    async (options?: { shouldUpdate?: () => boolean }) => {
+      const shouldUpdate = options?.shouldUpdate ?? (() => true);
+
+      setIsIndexSummaryLoading(true);
+      setIndexSummaryError(null);
+
+      try {
+        const summary = await fetchIndexSummary(datasetId);
+
+        if (shouldUpdate()) {
+          setIndexSummary(summary);
+        }
+      } catch (error) {
+        if (shouldUpdate()) {
+          setIndexSummaryError(
+            error instanceof Error
+              ? error.message
+              : "Could not load index database view.",
+          );
+        }
+      } finally {
+        if (shouldUpdate()) {
+          setIsIndexSummaryLoading(false);
+        }
+      }
+    },
+    [datasetId],
+  );
 
   useEffect(() => {
     let isMounted = true;
 
     async function loadDataset() {
       try {
-        const response = await fetch(`/api/datasets/${datasetId}`);
-
-        if (response.status === 404) {
-          if (isMounted) {
-            setNotFound(true);
-          }
-          return;
-        }
-
-        if (!response.ok) {
-          throw new Error(await getApiErrorMessage(response));
-        }
-
-        const body = (await response.json()) as DatasetDetailResponse;
+        const body = await fetchDatasetDetail(datasetId);
 
         if (isMounted) {
           setDataset(body.dataset);
           setDocuments(body.documents);
           setErrorMessage(null);
         }
+
+        void refreshIndexSummary({ shouldUpdate: () => isMounted });
       } catch (error) {
         if (isMounted) {
+          if (error instanceof Error && error.message === "Dataset not found.") {
+            setNotFound(true);
+            return;
+          }
+
           setErrorMessage(
             error instanceof Error ? error.message : "Could not load dataset.",
           );
@@ -74,7 +108,7 @@ export function DatasetDetail({ datasetId }: DatasetDetailProps) {
     return () => {
       isMounted = false;
     };
-  }, [datasetId]);
+  }, [datasetId, refreshIndexSummary]);
 
   async function handleDeleteSelected() {
     if (
@@ -114,6 +148,7 @@ export function DatasetDetail({ datasetId }: DatasetDetailProps) {
       );
       setSelectedDocumentIds([]);
       setNoticeMessage("Selected documents were deleted.");
+      void refreshIndexSummary();
     } catch (error) {
       setErrorMessage(
         error instanceof Error ? error.message : "Could not delete documents.",
@@ -129,6 +164,9 @@ export function DatasetDetail({ datasetId }: DatasetDetailProps) {
     }
 
     setIsIndexing(true);
+    setDocuments((currentDocuments) =>
+      currentDocuments.map((document) => ({ ...document, status: "indexing" })),
+    );
     setErrorMessage(null);
     setNoticeMessage(null);
 
@@ -142,12 +180,25 @@ export function DatasetDetail({ datasetId }: DatasetDetailProps) {
       }
 
       const body = (await response.json()) as { message?: string };
+      const refreshedDataset = await fetchDatasetDetail(datasetId);
 
-      setNoticeMessage(body.message ?? "Indexing is not implemented yet.");
+      setDataset(refreshedDataset.dataset);
+      setDocuments(refreshedDataset.documents);
+      setNoticeMessage(body.message ?? "Indexing complete.");
+      void refreshIndexSummary();
     } catch (error) {
       setErrorMessage(
         error instanceof Error ? error.message : "Could not index dataset.",
       );
+      try {
+        const refreshedDataset = await fetchDatasetDetail(datasetId);
+
+        setDataset(refreshedDataset.dataset);
+        setDocuments(refreshedDataset.documents);
+        void refreshIndexSummary();
+      } catch {
+        // Keep the visible optimistic state if the refresh also fails.
+      }
     } finally {
       setIsIndexing(false);
     }
@@ -207,8 +258,8 @@ export function DatasetDetail({ datasetId }: DatasetDetailProps) {
             </Link>
             <h1 className="mt-3 text-3xl font-semibold">{dataset.name}</h1>
             <p className="mt-3 max-w-2xl leading-7 text-zinc-600">
-              Upload PDFs, review local metadata, and keep the phase4 indexing
-              hook ready without doing real parsing yet.
+              Upload PDFs, index them into local Postgres, and test retrieval
+              before connecting the document chat agent.
             </p>
           </div>
           <div className="flex flex-col gap-3 sm:flex-row">
@@ -260,6 +311,13 @@ export function DatasetDetail({ datasetId }: DatasetDetailProps) {
           onSelectionChange={setSelectedDocumentIds}
           selectedDocumentIds={selectedDocumentIds}
         />
+
+        <IndexSummaryPanel
+          errorMessage={indexSummaryError}
+          isLoading={isIndexSummaryLoading}
+          onRefresh={() => void refreshIndexSummary()}
+          summary={indexSummary}
+        />
       </section>
     </main>
   );
@@ -281,4 +339,30 @@ async function getApiErrorMessage(response: Response): Promise<string> {
   } catch {
     return fallback;
   }
+}
+
+async function fetchDatasetDetail(datasetId: string): Promise<DatasetDetailResponse> {
+  const response = await fetch(`/api/datasets/${datasetId}`);
+
+  if (response.status === 404) {
+    throw new Error("Dataset not found.");
+  }
+
+  if (!response.ok) {
+    throw new Error(await getApiErrorMessage(response));
+  }
+
+  return (await response.json()) as DatasetDetailResponse;
+}
+
+async function fetchIndexSummary(
+  datasetId: string,
+): Promise<DatasetIndexSummary> {
+  const response = await fetch(`/api/datasets/${datasetId}/index/summary`);
+
+  if (!response.ok) {
+    throw new Error(await getApiErrorMessage(response));
+  }
+
+  return (await response.json()) as DatasetIndexSummary;
 }

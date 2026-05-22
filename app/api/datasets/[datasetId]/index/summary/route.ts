@@ -1,5 +1,5 @@
 import { getDataset } from "@/lib/documents/metadataStore";
-import { indexDataset } from "@/lib/indexing/indexDataset";
+import { getDatasetIndexSummary } from "@/lib/indexing/indexSummary";
 
 export const runtime = "nodejs";
 
@@ -9,7 +9,7 @@ type RouteContext = {
   }>;
 };
 
-export async function POST(_request: Request, context: RouteContext) {
+export async function GET(_request: Request, context: RouteContext) {
   const { datasetId } = await context.params;
   const dataset = await getDataset(datasetId);
 
@@ -18,16 +18,21 @@ export async function POST(_request: Request, context: RouteContext) {
   }
 
   try {
-    const result = await indexDataset(datasetId);
+    const summary = await getDatasetIndexSummary(datasetId);
 
-    return Response.json(result);
+    return Response.json(summary);
   } catch (error) {
-    console.error("Dataset indexing failed.", { datasetId, error });
+    console.error("[indexing] Could not load index summary.", {
+      datasetId,
+      error,
+    });
 
     return Response.json(
       {
         error:
-          error instanceof Error ? error.message : "Could not index dataset.",
+          error instanceof Error
+            ? error.message
+            : "Could not load index summary.",
       },
       { status: 500 },
     );
